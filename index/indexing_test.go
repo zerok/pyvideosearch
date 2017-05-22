@@ -36,6 +36,21 @@ func TestFillIndex(t *testing.T) {
 	}
 }
 
+// TestFillIndexBorkenCategoryJSON checks the behaviour of the fillIndex
+// function if the category.json file is not actually JSON. In that case
+// the program shouldn't panic but just return an error.
+func TestFillIndexBrokenCategoryJSON(t *testing.T) {
+	defer filet.CleanUp(t)
+	root, confFolder := createConference(t, "conf-2017", []string{})
+	ioutil.WriteFile(filepath.Join(confFolder, "category.json"), []byte("not valid json"), 0600)
+
+	idx, _ := bleve.NewMemOnly(bleve.NewIndexMapping())
+
+	if err := fillIndex(idx, root); err == nil {
+		t.Fatal("Expected error not returned")
+	}
+}
+
 func TestParseSession(t *testing.T) {
 	defer filet.CleanUp(t)
 	_, confPath := createConference(t, "conf-2017", []string{"my-session"})

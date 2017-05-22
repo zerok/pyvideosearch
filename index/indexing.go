@@ -1,6 +1,7 @@
 package index
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -17,7 +18,7 @@ import (
 const categoryFile = "category.json"
 const videosFolder = "videos"
 
-func parseCollection(p string) (*Collection, error) {
+func parseCollection(ctx context.Context, p string) (*Collection, error) {
 	result := Collection{}
 	categoryPath := filepath.Join(p, categoryFile)
 	videosPath := filepath.Join(p, videosFolder)
@@ -43,6 +44,11 @@ func parseCollection(p string) (*Collection, error) {
 	}
 	result.Sessions = make([]*Session, 0, len(videoFiles))
 	for _, videoFile := range videoFiles {
+		select {
+		case <-ctx.Done():
+			return nil, errors.New("Canceled")
+		default:
+		}
 		videoPath := filepath.Join(videosPath, videoFile.Name())
 		if !strings.HasSuffix(videoPath, ".json") {
 			continue
@@ -128,9 +134,13 @@ func fillIndex(idx bleve.Index, dataFolder string) error {
 
 	var folderWait sync.WaitGroup
 	var processingWait sync.WaitGroup
+	errs := make(chan error, len(categoryFolders))
 	folderWait.Add(len(categoryFolders))
 
 	parsedCollections := make(chan *Collection, len(categoryFolders))
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
 	for _, folder := range categoryFolders {
 		absPath := filepath.Join(dataFolder, folder.Name())
@@ -144,12 +154,19 @@ func fillIndex(idx bleve.Index, dataFolder string) error {
 			continue
 		}
 		go func(p string) {
-			collection, err := parseCollection(p)
+			defer folderWait.Done()
+			select {
+			case <-ctx.Done():
+				return
+			default:
+			}
+			collection, err := parseCollection(ctx, p)
 			if err != nil {
-				log.WithError(err).Fatalf("Failed to load the collection data in %s", p)
+				cancel()
+				errs <- errors.Wrapf(err, "Failed to load the collection data in %s", p)
+				return
 			}
 			parsedCollections <- collection
-			folderWait.Done()
 		}(absPath)
 	}
 
@@ -160,16 +177,24 @@ func fillIndex(idx bleve.Index, dataFolder string) error {
 		indexers.Add(5)
 		for i := 0; i < 5; i++ {
 			go func() {
-				for collection := range parsedCollections {
-					log.Infof("Indexing %s", collection.Title)
-					batch := idx.NewBatch()
-					for _, session := range collection.Sessions {
-						id := fmt.Sprintf("session:%s:%s", collection.Slug, session.Slug)
-						batch.Index(id, newIndexedSession(session, collection))
+				defer indexers.Done()
+				for {
+					select {
+					case <-ctx.Done():
+						return
+					case collection, ok := <-parsedCollections:
+						if !ok {
+							return
+						}
+						log.Infof("Indexing %s", collection.Title)
+						batch := idx.NewBatch()
+						for _, session := range collection.Sessions {
+							id := fmt.Sprintf("session:%s:%s", collection.Slug, session.Slug)
+							batch.Index(id, newIndexedSession(session, collection))
+						}
+						idx.Batch(batch)
 					}
-					idx.Batch(batch)
 				}
-				indexers.Done()
 			}()
 		}
 		indexers.Wait()
@@ -179,5 +204,12 @@ func fillIndex(idx bleve.Index, dataFolder string) error {
 	folderWait.Wait()
 	close(parsedCollections)
 	processingWait.Wait()
+
+	// Drain the errors channel to make sure that we are not ignoring an error.
+	select {
+	case err := <-errs:
+		return err
+	default:
+	}
 	return nil
 }

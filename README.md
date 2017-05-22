@@ -26,7 +26,7 @@ You need to have Go installed in order to build this project:
 
 ```
 $ mkdir -p $GOPATH/src/github.com/zerok
-$ cd $GOTPATH/src/github.com/zerok
+$ cd $GOPATH/src/github.com/zerok
 $ git clone git@github.com:zerok/pyvideosearch.git
 $ cd pyvideosearch
 $ go build

@@ -164,7 +164,7 @@ func fillIndex(idx bleve.Index, dataFolder string) error {
 					log.Infof("Indexing %s", collection.Title)
 					batch := idx.NewBatch()
 					for _, session := range collection.Sessions {
-						id := fmt.Sprintf("session:%s:%s", collection.Title, session.Title)
+						id := fmt.Sprintf("session:%s:%s", collection.Slug, session.Slug)
 						batch.Index(id, newIndexedSession(session, collection))
 					}
 					idx.Batch(batch)

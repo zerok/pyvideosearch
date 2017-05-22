@@ -75,7 +75,6 @@ func loadIndex(indexPath string, dataFolder string, forceRebuild bool) (bleve.In
 	sessionIndexMapping := bleve.NewDocumentMapping()
 	sessionIndexMapping.AddFieldMappingsAt("title", bleve.NewTextFieldMapping())
 	sessionIndexMapping.AddFieldMappingsAt("description", bleve.NewTextFieldMapping())
-	sessionIndexMapping.AddFieldMappingsAt("speakers", bleve.NewTextFieldMapping())
 
 	mapping := bleve.NewIndexMapping()
 	mapping.AddDocumentMapping("session", sessionIndexMapping)

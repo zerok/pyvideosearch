@@ -19,9 +19,13 @@ func runHTTPD(idx bleve.Index, addr string, allowedOrigins []string) error {
 		qs := r.FormValue("q")
 		q := bleve.NewQueryStringQuery(qs)
 		req := bleve.NewSearchRequest(q)
-		req.Fields = []string{"title", "url", "conference", "speakers"}
+		req.Fields = []string{"title", "url", "conference", "speakers.name", "speakers.slug", "thumbnail_url", "collection_title", "collection_url", "recorded", "recorded_formatted"}
 		req.Size = 100
 		req.IncludeLocations = true
+		collectionFacet := bleve.NewFacetRequest("collection_title", 10)
+		speakerFacet := bleve.NewFacetRequest("speakers", 10)
+		req.AddFacet("speaker", speakerFacet)
+		req.AddFacet("collection", collectionFacet)
 		res, err := idx.Search(req)
 		if err != nil {
 			http.Error(w, "Query failed", http.StatusInternalServerError)

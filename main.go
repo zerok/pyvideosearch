@@ -22,6 +22,10 @@ func main() {
 	pflag.StringVar(&baseURL, "base-url", "http://pyvideo.org", "Base URL of the pyvideo website")
 	pflag.Parse()
 
+	if dataFolder == "" {
+		log.Fatal("Please specify the path to the pyvideo data folder using --data-path")
+	}
+
 	idx, err := loadIndex(indexPath, dataFolder, forceRebuild)
 	if err != nil {
 		log.WithError(err).Fatalf("Failed to load index on %s", indexPath)

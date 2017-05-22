@@ -90,6 +90,7 @@ func loadIndex(indexPath string, dataFolder string, forceRebuild bool) (bleve.In
 			if err := fillIndex(idx, dataFolder); err != nil {
 				return nil, errors.Wrapf(err, "Failed to build index at %s", indexPath)
 			}
+			return idx, err
 		}
 		return nil, errors.Wrapf(err, "Failed to create new index at %s", indexPath)
 	}

@@ -225,6 +225,18 @@
 			"revisionTime": "2017-05-05T04:36:39Z"
 		},
 		{
+			"checksumSHA1": "naf+sai8rdVYJ9ozLllNMMwE9aY=",
+			"path": "github.com/rs/cors",
+			"revision": "2d7dd2a10331137ae3f931ba08c21fd00cbf208d",
+			"revisionTime": "2017-04-20T18:42:42Z"
+		},
+		{
+			"checksumSHA1": "hCRfPlNpqv8tvVivLzmXsoUOf1c=",
+			"path": "github.com/rs/xhandler",
+			"revision": "ed27b6fd65218132ee50cd95f38474a3d8a2cd12",
+			"revisionTime": "2016-06-18T19:32:21Z"
+		},
+		{
 			"checksumSHA1": "x/C9sWJ33glBGKgGvb8VvUQvR8s=",
 			"path": "github.com/sirupsen/logrus",
 			"revision": "5e5dc898656f695e2a086b8e12559febbfc01562",

@@ -20,6 +20,11 @@ in the index-path if that folder doesn't exist yet. Afterwards, a HTTP server
 is started listening on 0.0.0.0:8080. You can then query the index with the
 `/api/v1/search?q=<your search>` endpoint.
 
+By default, pyvideosearch only allows XHRs from `http://localhost:8000`. To
+change that, use the `--allowed-origin` flag (you can pass that multiple times
+to set multiple allowed origins).
+
+
 ## How to build
 
 You need to have Go installed in order to build this project:

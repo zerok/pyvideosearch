@@ -219,6 +219,12 @@
 			"revisionTime": "2017-04-30T22:20:11Z"
 		},
 		{
+			"checksumSHA1": "rJab1YdNhQooDiBWNnt7TLWPyBU=",
+			"path": "github.com/pkg/errors",
+			"revision": "c605e284fe17294bda444b34710735b29d1a9d90",
+			"revisionTime": "2017-05-05T04:36:39Z"
+		},
+		{
 			"checksumSHA1": "x/C9sWJ33glBGKgGvb8VvUQvR8s=",
 			"path": "github.com/sirupsen/logrus",
 			"revision": "5e5dc898656f695e2a086b8e12559febbfc01562",

@@ -1,4 +1,4 @@
-package main
+package index
 
 import (
 	"encoding/json"
@@ -14,13 +14,13 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-const CategoryFile = "category.json"
-const VideosFolder = "videos"
+const categoryFile = "category.json"
+const videosFolder = "videos"
 
 func parseCollection(p string) (*Collection, error) {
 	result := Collection{}
-	categoryPath := filepath.Join(p, CategoryFile)
-	videosPath := filepath.Join(p, VideosFolder)
+	categoryPath := filepath.Join(p, categoryFile)
+	videosPath := filepath.Join(p, videosFolder)
 	fp, err := os.Open(categoryPath)
 	if err != nil {
 		return nil, errors.Wrapf(err, "Failed to open category.json of %s", p)
@@ -71,7 +71,10 @@ func parseSession(p string) (*Session, error) {
 	return &result, nil
 }
 
-func loadIndex(indexPath string, dataFolder string, forceRebuild bool) (bleve.Index, error) {
+// LoadIndex attempts to load an index from a given path or build it based
+// on the data folder. If the index already exists then you can enforce a
+// rebuild using the forceRebuild parameter.
+func LoadIndex(indexPath string, dataFolder string, forceRebuild bool) (bleve.Index, error) {
 	sessionIndexMapping := bleve.NewDocumentMapping()
 	sessionIndexMapping.AddFieldMappingsAt("title", bleve.NewTextFieldMapping())
 	sessionIndexMapping.AddFieldMappingsAt("description", bleve.NewTextFieldMapping())
@@ -131,7 +134,7 @@ func fillIndex(idx bleve.Index, dataFolder string) error {
 
 	for _, folder := range categoryFolders {
 		absPath := filepath.Join(dataFolder, folder.Name())
-		categoryPath := filepath.Join(absPath, CategoryFile)
+		categoryPath := filepath.Join(absPath, categoryFile)
 		if strings.HasPrefix(folder.Name(), ".") {
 			folderWait.Done()
 			continue

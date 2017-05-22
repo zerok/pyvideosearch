@@ -8,9 +8,9 @@ fulltext-searching.
 
 ```
 # You need to have Go installed for that:
-$ go get github.com/zerok/pyvideosearch
+$ go get github.com/zerok/pyvideosearch/...
 
-$ ./pyvideosearch --data-path /path/to/pyvideo-data \
+$ pyvideosearch --data-path /path/to/pyvideo-data \
   --index-path /path/to/search.bleve \
   --http-addr 0.0.0.0:8080
 ```
@@ -34,7 +34,20 @@ $ mkdir -p $GOPATH/src/github.com/zerok
 $ cd $GOPATH/src/github.com/zerok
 $ git clone git@github.com:zerok/pyvideosearch.git
 $ cd pyvideosearch
-$ go build
+$ make
+```
+
+
+## Packaging
+
+If you want to build a package which includes only the binary and the meta
+files (e.g. README.md and LICENSE), we recommend that you install
+[goreleaser][] and then simply run `make snapshot`:
+
+```
+$ make snapshot
+$ ls -1 dist
 ```
 
 [bleve]: http://www.blevesearch.com/
+[goreleaser]: https://github.com/goreleaser/goreleaser

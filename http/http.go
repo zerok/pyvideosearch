@@ -1,4 +1,4 @@
-package main
+package http
 
 import (
 	"net/http"
@@ -12,7 +12,10 @@ import (
 	"github.com/julienschmidt/httprouter"
 )
 
-func runHTTPD(idx bleve.Index, addr string, allowedOrigins []string) error {
+// RunHTTPD starts the API server on the given addr serving the index.
+// If you need to support XHRs, make sure to pass respective allowedOrigin
+// hosts like http://domain.com:5000.
+func RunHTTPD(idx bleve.Index, addr string, allowedOrigins []string) error {
 	router := httprouter.New()
 
 	router.GET("/api/v1/search", func(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {

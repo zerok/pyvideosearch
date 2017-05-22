@@ -2,6 +2,8 @@ package main
 
 import (
 	log "github.com/sirupsen/logrus"
+	"github.com/zerok/pyvideosearch/http"
+	"github.com/zerok/pyvideosearch/index"
 
 	"runtime"
 
@@ -28,13 +30,13 @@ func main() {
 		log.Fatal("Please specify the path to the pyvideo data folder using --data-path")
 	}
 
-	idx, err := loadIndex(indexPath, dataFolder, forceRebuild)
+	idx, err := index.LoadIndex(indexPath, dataFolder, forceRebuild)
 	if err != nil {
 		log.WithError(err).Fatalf("Failed to load index on %s", indexPath)
 	}
 	defer idx.Close()
 
-	if err := runHTTPD(idx, addr, allowedOrigins); err != nil {
+	if err := http.RunHTTPD(idx, addr, allowedOrigins); err != nil {
 		log.WithError(err).Fatalf("Failed to start HTTPD on %s", addr)
 	}
 }

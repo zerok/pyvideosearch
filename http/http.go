@@ -8,6 +8,8 @@ import (
 
 	"encoding/json"
 
+	"expvar"
+
 	"github.com/blevesearch/bleve"
 	"github.com/julienschmidt/httprouter"
 )
@@ -17,6 +19,8 @@ import (
 // hosts like http://domain.com:5000.
 func RunHTTPD(idx bleve.Index, addr string, allowedOrigins []string) error {
 	router := httprouter.New()
+
+	router.Handler(http.MethodGet, "/api/v1/metrics", expvar.Handler())
 
 	router.GET("/api/v1/search", func(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 		qs := r.FormValue("q")

@@ -7,7 +7,7 @@ test:
 	go test -v $(shell go list ./... | grep -v /vendor/)
 
 clean:
-	rm -f pyvideosearch dist
+	rm -rf pyvideosearch dist
 
 snapshot:
 	goreleaser --snapshot --skip-publish

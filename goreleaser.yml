@@ -1,0 +1,15 @@
+build:
+  binary: pyvideosearch
+  main: cmd/pyvideosearch/main.go
+  goos:
+    - linux
+    - windows
+    - darwin
+  goarch:
+    - amd64
+  archive:
+    replacements:
+      amd64: 64
+    files:
+      - README.md
+      - LICENSE

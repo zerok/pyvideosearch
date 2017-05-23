@@ -18,6 +18,43 @@ import (
 const categoryFile = "category.json"
 const videosFolder = "videos"
 
+// LoadIndex attempts to load an index from a given path or build it based
+// on the data folder. If the index already exists then you can enforce a
+// rebuild using the forceRebuild parameter.
+func LoadIndex(indexPath string, dataFolder string, forceRebuild bool) (bleve.Index, error) {
+	var create bool
+	sessionIndexMapping := bleve.NewDocumentMapping()
+	sessionIndexMapping.AddFieldMappingsAt("title", bleve.NewTextFieldMapping())
+	sessionIndexMapping.AddFieldMappingsAt("description", bleve.NewTextFieldMapping())
+
+	mapping := bleve.NewIndexMapping()
+	mapping.AddDocumentMapping("session", sessionIndexMapping)
+
+	if _, err := os.Stat(indexPath); err != nil {
+		if os.IsNotExist(err) {
+			create = true
+			log.Infof("%s doesn't exist yet. Creating a new index there.", indexPath)
+		} else {
+			return nil, errors.Wrapf(err, "Failed to create new index at %s", indexPath)
+		}
+	}
+	if forceRebuild || create {
+		if err := os.RemoveAll(indexPath); err != nil {
+			return nil, errors.Wrapf(err, "Failed to remove old index folder %s", indexPath)
+		}
+		idx, err := bleve.New(indexPath, mapping)
+		if err != nil {
+			return nil, errors.Wrapf(err, "Failed to create new index in %s", indexPath)
+		}
+		if err := fillIndex(idx, dataFolder); err != nil {
+			return nil, errors.Wrapf(err, "Failed to build index at %s", indexPath)
+		}
+		return idx, err
+	}
+	log.Infof("%s already exists. Loading index from there.", indexPath)
+	return bleve.Open(indexPath)
+}
+
 func parseCollection(ctx context.Context, p string) (*Collection, error) {
 	result := Collection{}
 	categoryPath := filepath.Join(p, categoryFile)
@@ -75,49 +112,6 @@ func parseSession(p string) (*Session, error) {
 	}
 	result.Slug = strings.TrimSuffix(filepath.Base(p), ".json")
 	return &result, nil
-}
-
-// LoadIndex attempts to load an index from a given path or build it based
-// on the data folder. If the index already exists then you can enforce a
-// rebuild using the forceRebuild parameter.
-func LoadIndex(indexPath string, dataFolder string, forceRebuild bool) (bleve.Index, error) {
-	sessionIndexMapping := bleve.NewDocumentMapping()
-	sessionIndexMapping.AddFieldMappingsAt("title", bleve.NewTextFieldMapping())
-	sessionIndexMapping.AddFieldMappingsAt("description", bleve.NewTextFieldMapping())
-
-	mapping := bleve.NewIndexMapping()
-	mapping.AddDocumentMapping("session", sessionIndexMapping)
-
-	if _, err := os.Stat(indexPath); err != nil {
-		if os.IsNotExist(err) {
-			log.Infof("%s doesn't exist yet. Creating a new index there.", indexPath)
-			idx, err := bleve.New(indexPath, mapping)
-			if err != nil {
-				return nil, errors.Wrapf(err, "Failed to create new index in %s", indexPath)
-			}
-			if err := fillIndex(idx, dataFolder); err != nil {
-				return nil, errors.Wrapf(err, "Failed to build index at %s", indexPath)
-			}
-			return idx, err
-		}
-		return nil, errors.Wrapf(err, "Failed to create new index at %s", indexPath)
-	}
-	// The index already exists, let's open it from here.
-	if forceRebuild {
-		if err := os.RemoveAll(indexPath); err != nil {
-			return nil, errors.Wrapf(err, "Failed to remove old index folder %s", indexPath)
-		}
-		idx, err := bleve.New(indexPath, mapping)
-		if err != nil {
-			return nil, errors.Wrapf(err, "Failed to create new index in %s", indexPath)
-		}
-		if err := fillIndex(idx, dataFolder); err != nil {
-			return nil, errors.Wrapf(err, "Failed to build index at %s", indexPath)
-		}
-		return idx, err
-	}
-	log.Infof("%s already exists. Loading index from there.", indexPath)
-	return bleve.Open(indexPath)
 }
 
 func fillIndex(idx bleve.Index, dataFolder string) error {

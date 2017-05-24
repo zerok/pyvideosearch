@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/blevesearch/bleve"
 	log "github.com/sirupsen/logrus"
 	"github.com/zerok/pyvideosearch/http"
 	"github.com/zerok/pyvideosearch/index"
@@ -30,13 +31,17 @@ func main() {
 		log.Fatal("Please specify the path to the pyvideo data folder using --data-path")
 	}
 
-	idx, err := index.LoadIndex(indexPath, dataFolder, forceRebuild)
-	if err != nil {
-		log.WithError(err).Fatalf("Failed to load index on %s", indexPath)
-	}
-	defer idx.Close()
+	idxChan := make(chan bleve.Index, 1)
 
-	if err := http.RunHTTPD(idx, addr, allowedOrigins); err != nil {
+	go func() {
+		idx, err := index.LoadIndex(indexPath, dataFolder, forceRebuild)
+		if err != nil {
+			log.WithError(err).Fatalf("Failed to load index on %s", indexPath)
+		}
+		idxChan <- idx
+	}()
+
+	if err := http.RunHTTPD(idxChan, addr, allowedOrigins); err != nil {
 		log.WithError(err).Fatalf("Failed to start HTTPD on %s", addr)
 	}
 }

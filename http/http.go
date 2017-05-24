@@ -10,19 +10,38 @@ import (
 
 	"expvar"
 
+	"sync"
+
 	"github.com/blevesearch/bleve"
 	"github.com/julienschmidt/httprouter"
 )
 
+var searchQueries = expvar.NewInt("pyvideo.search_count")
+
 // RunHTTPD starts the API server on the given addr serving the index.
 // If you need to support XHRs, make sure to pass respective allowedOrigin
 // hosts like http://domain.com:5000.
-func RunHTTPD(idx bleve.Index, addr string, allowedOrigins []string) error {
+func RunHTTPD(idxChan chan bleve.Index, addr string, allowedOrigins []string) error {
 	router := httprouter.New()
+
+	idxLock := sync.RWMutex{}
+	idx, _ := bleve.NewMemOnly(bleve.NewIndexMapping())
+
+	go func() {
+		for {
+			select {
+			case i := <-idxChan:
+				idxLock.Lock()
+				idx = i
+				idxLock.Unlock()
+			}
+		}
+	}()
 
 	router.Handler(http.MethodGet, "/api/v1/metrics", expvar.Handler())
 
 	router.GET("/api/v1/search", func(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
+		searchQueries.Add(1)
 		qs := r.FormValue("q")
 		q := bleve.NewQueryStringQuery(qs)
 		req := bleve.NewSearchRequest(q)
@@ -33,6 +52,8 @@ func RunHTTPD(idx bleve.Index, addr string, allowedOrigins []string) error {
 		speakerFacet := bleve.NewFacetRequest("speakers", 10)
 		req.AddFacet("speaker", speakerFacet)
 		req.AddFacet("collection", collectionFacet)
+		idxLock.RLock()
+		defer idxLock.RUnlock()
 		res, err := idx.Search(req)
 		if err != nil {
 			http.Error(w, "Query failed", http.StatusInternalServerError)

@@ -1,6 +1,7 @@
 package http
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/rs/cors"
@@ -21,7 +22,7 @@ var searchQueries = expvar.NewInt("pyvideo.search_count")
 // RunHTTPD starts the API server on the given addr serving the index.
 // If you need to support XHRs, make sure to pass respective allowedOrigin
 // hosts like http://domain.com:5000.
-func RunHTTPD(idxChan chan bleve.Index, addr string, allowedOrigins []string) error {
+func RunHTTPD(ctx context.Context, idxChan chan bleve.Index, addr string, allowedOrigins []string) error {
 	router := httprouter.New()
 
 	idxLock := sync.RWMutex{}
@@ -30,10 +31,14 @@ func RunHTTPD(idxChan chan bleve.Index, addr string, allowedOrigins []string) er
 	go func() {
 		for {
 			select {
+			case <-ctx.Done():
+				return
 			case i := <-idxChan:
 				idxLock.Lock()
+				idx.Close()
 				idx = i
 				idxLock.Unlock()
+				log.Info("Index updated for HTTPD")
 			}
 		}
 	}()

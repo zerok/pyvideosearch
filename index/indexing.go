@@ -5,23 +5,76 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/blevesearch/bleve"
 	"github.com/pkg/errors"
 
+	"io/ioutil"
+
+	"github.com/Flaque/filet"
 	log "github.com/sirupsen/logrus"
 )
 
 const categoryFile = "category.json"
 const videosFolder = "videos"
+const stateFile = ".state"
+
+func WatchForUpdates(ctx context.Context, idxChan chan bleve.Index, indexPath string, dataPath string, interval time.Duration) error {
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		default:
+		}
+
+		log.Info("Checking upstream for new commits")
+
+		if err := updateRepo(dataPath); err != nil {
+			return errors.Wrapf(err, "Failed to update git repository at %s", dataPath)
+		}
+
+		ref, err := getRepoState(dataPath)
+		if err != nil {
+			return errors.Wrapf(err, "Failed to get data repo state of %s", dataPath)
+		}
+
+		idxRef, err := getIndexState(indexPath)
+		if err != nil {
+			return errors.Wrapf(err, "Failed to get index state of %s", indexPath)
+		}
+
+		if idxRef != ref {
+			log.Info("New commits found. Will rebuild index")
+			tmpIndex := filet.TmpDir(nil, "")
+			idx, err := LoadIndex(ctx, tmpIndex, dataPath, true)
+			if err != nil {
+				return errors.Wrap(err, "Failed to load the new index")
+			}
+			idx.Close()
+			os.RemoveAll(indexPath)
+			os.Rename(tmpIndex, indexPath)
+			newIdx, err := bleve.Open(indexPath)
+			if err != nil {
+				return errors.Wrap(err, "Failed to open new index")
+			}
+			idxChan <- newIdx
+		}
+
+		time.Sleep(interval)
+	}
+}
 
 // LoadIndex attempts to load an index from a given path or build it based
 // on the data folder. If the index already exists then you can enforce a
 // rebuild using the forceRebuild parameter.
-func LoadIndex(indexPath string, dataFolder string, forceRebuild bool) (bleve.Index, error) {
+func LoadIndex(ctx context.Context, indexPath string, dataFolder string, forceRebuild bool) (bleve.Index, error) {
+	log.Info("Loading index")
+	defer log.Info("Load complete")
 	var create bool
 	sessionIndexMapping := bleve.NewDocumentMapping()
 	sessionIndexMapping.AddFieldMappingsAt("title", bleve.NewTextFieldMapping())
@@ -46,8 +99,15 @@ func LoadIndex(indexPath string, dataFolder string, forceRebuild bool) (bleve.In
 		if err != nil {
 			return nil, errors.Wrapf(err, "Failed to create new index in %s", indexPath)
 		}
-		if err := fillIndex(idx, dataFolder); err != nil {
+		if err := fillIndex(ctx, idx, dataFolder); err != nil {
 			return nil, errors.Wrapf(err, "Failed to build index at %s", indexPath)
+		}
+		ref, err := getRepoState(dataFolder)
+		if err != nil {
+			return idx, err
+		}
+		if err := setIndexState(indexPath, ref); err != nil {
+			return idx, err
 		}
 		return idx, err
 	}
@@ -114,7 +174,7 @@ func parseSession(p string) (*Session, error) {
 	return &result, nil
 }
 
-func fillIndex(idx bleve.Index, dataFolder string) error {
+func fillIndex(ctx context.Context, idx bleve.Index, dataFolder string) error {
 	root, err := os.Open(dataFolder)
 	if err != nil {
 		return errors.Wrapf(err, "Failed to open pyvideo data folder %s", dataFolder)
@@ -133,10 +193,15 @@ func fillIndex(idx bleve.Index, dataFolder string) error {
 
 	parsedCollections := make(chan *Collection, len(categoryFolders))
 
-	ctx, cancel := context.WithCancel(context.Background())
+	subContext, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	for _, folder := range categoryFolders {
+		select {
+		case <-ctx.Done():
+			return nil
+		default:
+		}
 		absPath := filepath.Join(dataFolder, folder.Name())
 		categoryPath := filepath.Join(absPath, categoryFile)
 		if strings.HasPrefix(folder.Name(), ".") {
@@ -150,11 +215,11 @@ func fillIndex(idx bleve.Index, dataFolder string) error {
 		go func(p string) {
 			defer folderWait.Done()
 			select {
-			case <-ctx.Done():
+			case <-subContext.Done():
 				return
 			default:
 			}
-			collection, err := parseCollection(ctx, p)
+			collection, err := parseCollection(subContext, p)
 			if err != nil {
 				cancel()
 				errs <- errors.Wrapf(err, "Failed to load the collection data in %s", p)
@@ -174,7 +239,7 @@ func fillIndex(idx bleve.Index, dataFolder string) error {
 				defer indexers.Done()
 				for {
 					select {
-					case <-ctx.Done():
+					case <-subContext.Done():
 						return
 					case collection, ok := <-parsedCollections:
 						if !ok {
@@ -206,4 +271,34 @@ func fillIndex(idx bleve.Index, dataFolder string) error {
 	default:
 	}
 	return nil
+}
+
+func updateRepo(p string) error {
+	cmd := exec.Command("git", "pull", "origin", "master")
+	cmd.Dir = p
+	return cmd.Run()
+}
+
+func getRepoState(p string) (string, error) {
+	cmd := exec.Command("git", "rev-parse", "HEAD")
+	cmd.Dir = p
+	data, err := cmd.CombinedOutput()
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(data)), err
+}
+
+func getIndexState(p string) (string, error) {
+	sp := filepath.Join(p, stateFile)
+	data, err := ioutil.ReadFile(sp)
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(data)), err
+}
+
+func setIndexState(p string, ref string) error {
+	sp := filepath.Join(p, stateFile)
+	return ioutil.WriteFile(sp, []byte(ref), 0600)
 }

@@ -4,7 +4,6 @@ import (
 	"context"
 	"time"
 
-	"github.com/blevesearch/bleve"
 	log "github.com/sirupsen/logrus"
 	"github.com/zerok/pyvideosearch/http"
 	"github.com/zerok/pyvideosearch/index"
@@ -40,7 +39,7 @@ func main() {
 		log.Fatal("Please specify the path to the pyvideo data folder using --data-path")
 	}
 
-	idxChan := make(chan bleve.Index, 1)
+	idxChan := make(chan *index.Index, 1)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -51,7 +50,7 @@ func main() {
 	}
 
 	go func() {
-		idx, err := index.LoadIndex(ctx, indexPath, dataFolder, forceRebuild)
+		idx, err := index.LoadIndex(ctx, indexPath, dataFolder, forceRebuild, true)
 		if err != nil {
 			log.WithError(err).Fatalf("Failed to load index on %s", indexPath)
 		}
@@ -62,7 +61,7 @@ func main() {
 			return
 		}
 
-		if err := index.WatchForUpdates(ctx, idxChan, indexPath, dataFolder, checkInterval); err != nil {
+		if err := index.WatchForUpdates(ctx, idxChan, indexPath, dataFolder, checkInterval, !startHTTPD); err != nil {
 			log.WithError(err).Fatal("Failed to watch-update data folder")
 		}
 

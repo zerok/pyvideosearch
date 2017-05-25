@@ -13,18 +13,32 @@ import (
 
 	"github.com/blevesearch/bleve"
 	"github.com/pkg/errors"
+	uuid "github.com/satori/go.uuid"
 
-	"io/ioutil"
-
-	"github.com/Flaque/filet"
 	log "github.com/sirupsen/logrus"
 )
+
+type Index struct {
+	Index bleve.Index
+	Path  string
+}
+
+func (i *Index) Close() error {
+	return i.Index.Close()
+}
+
+func (i *Index) Destroy() error {
+	if i.Path != "" {
+		return os.RemoveAll(i.Path)
+	}
+	return nil
+}
 
 const categoryFile = "category.json"
 const videosFolder = "videos"
 const stateFile = ".state"
 
-func WatchForUpdates(ctx context.Context, idxChan chan bleve.Index, indexPath string, dataPath string, interval time.Duration) error {
+func WatchForUpdates(ctx context.Context, idxChan chan *Index, indexPath string, dataPath string, interval time.Duration, deleteOldIndex bool) error {
 	for {
 		select {
 		case <-ctx.Done():
@@ -48,71 +62,128 @@ func WatchForUpdates(ctx context.Context, idxChan chan bleve.Index, indexPath st
 			return errors.Wrapf(err, "Failed to get index state of %s", indexPath)
 		}
 
-		if idxRef != ref {
+		log.WithField("index", idxRef.Ref).WithField("repo", ref).Info("Comparing states")
+
+		oldIdx, err := findIndex(indexPath)
+		if err != nil {
+			return errors.Wrapf(err, "Failed to find old index")
+		}
+
+		if idxRef.Ref != ref {
 			log.Info("New commits found. Will rebuild index")
-			tmpIndex := filet.TmpDir(nil, "")
-			idx, err := LoadIndex(ctx, tmpIndex, dataPath, true)
+			newIdxName := newIndexName(indexPath)
+			idx, err := createNewIndex(ctx, filepath.Join(indexPath, newIdxName), dataPath)
 			if err != nil {
 				return errors.Wrap(err, "Failed to load the new index")
 			}
-			idx.Close()
-			os.RemoveAll(indexPath)
-			os.Rename(tmpIndex, indexPath)
-			newIdx, err := bleve.Open(indexPath)
-			if err != nil {
-				return errors.Wrap(err, "Failed to open new index")
+			if err := setIndexState(indexPath, &State{Index: newIdxName, Ref: ref}); err != nil {
+				return err
 			}
-			idxChan <- newIdx
+			if oldIdx != "" && deleteOldIndex {
+				os.RemoveAll(oldIdx)
+			}
+			idxChan <- idx
 		}
 
 		time.Sleep(interval)
 	}
 }
 
-// LoadIndex attempts to load an index from a given path or build it based
-// on the data folder. If the index already exists then you can enforce a
-// rebuild using the forceRebuild parameter.
-func LoadIndex(ctx context.Context, indexPath string, dataFolder string, forceRebuild bool) (bleve.Index, error) {
-	log.Info("Loading index")
-	defer log.Info("Load complete")
-	var create bool
+func findIndex(root string) (string, error) {
+	fp, err := os.Open(root)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", nil
+		}
+		return "", err
+	}
+
+	files, err := fp.Readdir(0)
+	if err != nil {
+		return "", err
+	}
+	for _, file := range files {
+		if file.IsDir() {
+			return filepath.Join(root, file.Name()), nil
+		}
+	}
+	return "", nil
+}
+
+func newIndexName(root string) string {
+	return uuid.NewV4().String()
+}
+
+func createNewIndex(ctx context.Context, indexPath string, dataPath string) (*Index, error) {
 	sessionIndexMapping := bleve.NewDocumentMapping()
 	sessionIndexMapping.AddFieldMappingsAt("title", bleve.NewTextFieldMapping())
 	sessionIndexMapping.AddFieldMappingsAt("description", bleve.NewTextFieldMapping())
 
 	mapping := bleve.NewIndexMapping()
 	mapping.AddDocumentMapping("session", sessionIndexMapping)
-
-	if _, err := os.Stat(indexPath); err != nil {
-		if os.IsNotExist(err) {
-			create = true
-			log.Infof("%s doesn't exist yet. Creating a new index there.", indexPath)
-		} else {
-			return nil, errors.Wrapf(err, "Failed to create new index at %s", indexPath)
-		}
+	idx, err := bleve.New(indexPath, mapping)
+	if err != nil {
+		return nil, errors.Wrapf(err, "Failed to create new index in %s", indexPath)
 	}
+	if err := fillIndex(ctx, idx, dataPath); err != nil {
+		return nil, errors.Wrapf(err, "Failed to build index at %s", indexPath)
+	}
+	return &Index{
+		Index: idx,
+		Path:  indexPath,
+	}, nil
+}
+
+// LoadIndex attempts to load an index from a given path or build it based
+// on the data folder. If the index already exists then you can enforce a
+// rebuild using the forceRebuild parameter.
+func LoadIndex(ctx context.Context, indexPath string, dataFolder string, forceRebuild bool, deleteOld bool) (*Index, error) {
+	log.Info("Loading index")
+	defer log.Info("Load complete")
+	var create bool
+
+	idxPath, err := findIndex(indexPath)
+	if err != nil {
+		return nil, errors.Wrapf(err, "Failed to create new index at %s", indexPath)
+	}
+	if idxPath == "" {
+		create = true
+		log.Infof("%s doesn't exist yet. Creating a new index.", indexPath)
+	}
+
 	if forceRebuild || create {
-		if err := os.RemoveAll(indexPath); err != nil {
-			return nil, errors.Wrapf(err, "Failed to remove old index folder %s", indexPath)
+		if idxPath != "" && deleteOld {
+			if err := os.RemoveAll(idxPath); err != nil {
+				return nil, errors.Wrapf(err, "Failed to remove old index folder %s", indexPath)
+			}
 		}
-		idx, err := bleve.New(indexPath, mapping)
+		if err := os.MkdirAll(indexPath, 0700); err != nil {
+			return nil, errors.Wrapf(err, "Failed to create index root folder in %s", indexPath)
+		}
+		idxName := newIndexName(indexPath)
+		idxPath = filepath.Join(indexPath, idxName)
+		idx, err := createNewIndex(ctx, idxPath, dataFolder)
 		if err != nil {
 			return nil, errors.Wrapf(err, "Failed to create new index in %s", indexPath)
 		}
-		if err := fillIndex(ctx, idx, dataFolder); err != nil {
-			return nil, errors.Wrapf(err, "Failed to build index at %s", indexPath)
-		}
 		ref, err := getRepoState(dataFolder)
 		if err != nil {
-			return idx, err
+			return nil, err
 		}
-		if err := setIndexState(indexPath, ref); err != nil {
-			return idx, err
+		if err := setIndexState(indexPath, &State{Index: idxName, Ref: ref}); err != nil {
+			return nil, err
 		}
 		return idx, err
 	}
-	log.Infof("%s already exists. Loading index from there.", indexPath)
-	return bleve.Open(indexPath)
+	log.Infof("%s already exists. Loading index from there.", idxPath)
+	idx, err := bleve.Open(idxPath)
+	if err != nil {
+		return nil, err
+	}
+	return &Index{
+		Index: idx,
+		Path:  idxPath,
+	}, err
 }
 
 func parseCollection(ctx context.Context, p string) (*Collection, error) {
@@ -275,11 +346,14 @@ func fillIndex(ctx context.Context, idx bleve.Index, dataFolder string) error {
 
 func updateRepo(p string) error {
 	cmd := exec.Command("git", "pull", "origin", "master")
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
 	cmd.Dir = p
 	return cmd.Run()
 }
 
 func getRepoState(p string) (string, error) {
+	log.Infof("Checking HEAD of %s", p)
 	cmd := exec.Command("git", "rev-parse", "HEAD")
 	cmd.Dir = p
 	data, err := cmd.CombinedOutput()
@@ -289,16 +363,26 @@ func getRepoState(p string) (string, error) {
 	return strings.TrimSpace(string(data)), err
 }
 
-func getIndexState(p string) (string, error) {
+func getIndexState(p string) (*State, error) {
 	sp := filepath.Join(p, stateFile)
-	data, err := ioutil.ReadFile(sp)
+	state := State{}
+	fp, err := os.Open(sp)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
-	return strings.TrimSpace(string(data)), err
+	defer fp.Close()
+	if err := json.NewDecoder(fp).Decode(&state); err != nil {
+		return nil, err
+	}
+	return &state, nil
 }
 
-func setIndexState(p string, ref string) error {
+func setIndexState(p string, state *State) error {
 	sp := filepath.Join(p, stateFile)
-	return ioutil.WriteFile(sp, []byte(ref), 0600)
+	fp, err := os.OpenFile(sp, os.O_TRUNC|os.O_CREATE|os.O_RDWR, 0600)
+	if err != nil {
+		return err
+	}
+	defer fp.Close()
+	return json.NewEncoder(fp).Encode(state)
 }

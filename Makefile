@@ -15,4 +15,7 @@ clean:
 snapshot:
 	goreleaser --snapshot --skip-publish
 
-.PHONY: all clean
+docker: pyvideosearch-linux Dockerfile
+	docker build -t pyvideosearch:latest .
+
+.PHONY: all clean docker

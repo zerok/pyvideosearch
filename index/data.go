@@ -12,6 +12,11 @@ import (
 const inputTimestampFormat = "2006-01-02"
 const outputTimestampFormat = "Mon Jan 2 2006"
 
+type State struct {
+	Ref   string
+	Index string
+}
+
 type Video struct {
 	Type string
 	URL  string

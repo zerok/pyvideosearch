@@ -15,6 +15,7 @@ import (
 
 	"github.com/blevesearch/bleve"
 	"github.com/julienschmidt/httprouter"
+	"github.com/zerok/pyvideosearch/index"
 )
 
 var searchQueries = expvar.NewInt("pyvideo.search_count")
@@ -22,11 +23,14 @@ var searchQueries = expvar.NewInt("pyvideo.search_count")
 // RunHTTPD starts the API server on the given addr serving the index.
 // If you need to support XHRs, make sure to pass respective allowedOrigin
 // hosts like http://domain.com:5000.
-func RunHTTPD(ctx context.Context, idxChan chan bleve.Index, addr string, allowedOrigins []string) error {
+func RunHTTPD(ctx context.Context, idxChan chan *index.Index, addr string, allowedOrigins []string) error {
 	router := httprouter.New()
 
 	idxLock := sync.RWMutex{}
-	idx, _ := bleve.NewMemOnly(bleve.NewIndexMapping())
+	i, _ := bleve.NewMemOnly(bleve.NewIndexMapping())
+	idx := &index.Index{
+		Index: i,
+	}
 
 	go func() {
 		for {
@@ -36,6 +40,7 @@ func RunHTTPD(ctx context.Context, idxChan chan bleve.Index, addr string, allowe
 			case i := <-idxChan:
 				idxLock.Lock()
 				idx.Close()
+				idx.Destroy()
 				idx = i
 				idxLock.Unlock()
 				log.Info("Index updated for HTTPD")
@@ -59,7 +64,7 @@ func RunHTTPD(ctx context.Context, idxChan chan bleve.Index, addr string, allowe
 		req.AddFacet("collection", collectionFacet)
 		idxLock.RLock()
 		defer idxLock.RUnlock()
-		res, err := idx.Search(req)
+		res, err := idx.Index.Search(req)
 		if err != nil {
 			http.Error(w, "Query failed", http.StatusInternalServerError)
 			return

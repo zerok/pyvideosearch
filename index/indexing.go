@@ -15,6 +15,7 @@ import (
 	"github.com/pkg/errors"
 	uuid "github.com/satori/go.uuid"
 
+	"github.com/gosimple/slug"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -241,7 +242,9 @@ func parseSession(p string) (*Session, error) {
 	if err := json.NewDecoder(fp).Decode(&result); err != nil {
 		return nil, errors.Wrapf(err, "Failed to parse session file %s", p)
 	}
-	result.Slug = strings.TrimSuffix(filepath.Base(p), ".json")
+	if result.Slug == "" {
+		result.Slug = slug.Make(result.Title)
+	}
 	return &result, nil
 }
 

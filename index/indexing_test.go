@@ -1,6 +1,7 @@
 package index
 
 import (
+	"context"
 	"fmt"
 	"path/filepath"
 	"testing"
@@ -26,13 +27,13 @@ func TestFillIndex(t *testing.T) {
 	root, _ := createConference(t, "conf-2017", []string{"my-session", "my-other-session"})
 	idx, _ := bleve.NewMemOnly(bleve.NewIndexMapping())
 
-	if err := fillIndex(idx, root); err != nil {
+	if err := fillIndex(context.Background(), idx, root); err != nil {
 		t.Fatalf("Unexpected error when filling the index: %s", err.Error())
 	}
 
 	count, _ := idx.DocCount()
-	if count != 2 {
-		t.Fatalf("Expected 2 document in the index. Got %d.", count)
+	if count != 1 {
+		t.Fatalf("Expected 1 document in the index. Got %d.", count)
 	}
 }
 
@@ -46,7 +47,7 @@ func TestFillIndexBrokenCategoryJSON(t *testing.T) {
 
 	idx, _ := bleve.NewMemOnly(bleve.NewIndexMapping())
 
-	if err := fillIndex(idx, root); err == nil {
+	if err := fillIndex(context.Background(), idx, root); err == nil {
 		t.Fatal("Expected error not returned")
 	}
 }
@@ -60,8 +61,8 @@ func TestParseSession(t *testing.T) {
 		t.Fatalf("Parsing session file returned an unexpected error: %s", err.Error())
 	}
 
-	// The session slug is pretty much the filename without the extension.
-	if s.Slug != "my-session" {
+	// The session slug is derived from the title if not explicitly set:
+	if s.Slug != "some-title" {
 		t.Errorf("Unexpected value for slug: %v", s.Slug)
 	}
 }

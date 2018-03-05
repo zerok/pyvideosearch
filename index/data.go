@@ -9,7 +9,8 @@ import (
 	"github.com/gosimple/slug"
 )
 
-const inputTimestampFormat = "2006-01-02"
+var inputTimestampFormats = []string{time.RFC3339, "2006-01-02T15:04:05", "2006-01-02"}
+
 const outputTimestampFormat = "Mon Jan 2 2006"
 
 type State struct {
@@ -80,13 +81,19 @@ func newIndexedSession(session *Session, collection *Collection) IndexedSession 
 	}
 
 	if session.Recorded != "" {
-		recorded, err := time.Parse(inputTimestampFormat, session.Recorded)
-		if err != nil {
-			log.WithError(err).Infof("Failed to parse %s", session.Recorded)
-		} else {
-			res.Recorded = recorded
+		valid := false
+		for _, fmt := range inputTimestampFormats {
+			recorded, err := time.Parse(fmt, session.Recorded)
+			if err == nil {
+				res.Recorded = recorded
+				valid = true
+				break
+			}
 		}
-		res.RecordedFormatted = recorded.Format(outputTimestampFormat)
+		if !valid {
+			log.Infof("Failed to parse %s", session.Recorded)
+		}
+		res.RecordedFormatted = res.Recorded.Format(outputTimestampFormat)
 	}
 
 	return res

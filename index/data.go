@@ -5,8 +5,7 @@ import (
 	"time"
 
 	log "github.com/sirupsen/logrus"
-
-	"github.com/gosimple/slug"
+	"github.com/zerok/pyvideosearch/slugify"
 )
 
 var inputTimestampFormats = []string{time.RFC3339, "2006-01-02T15:04:05", "2006-01-02"}
@@ -65,7 +64,7 @@ func newIndexedSession(session *Session, collection *Collection) IndexedSession 
 	for _, speaker := range session.Speakers {
 		s := Speaker{
 			Name: speaker,
-			Slug: slug.Make(speaker),
+			Slug: slugify.Slugify(speaker),
 		}
 		speakers = append(speakers, s)
 	}

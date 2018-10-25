@@ -14,9 +14,8 @@ import (
 	"github.com/blevesearch/bleve"
 	"github.com/pkg/errors"
 	uuid "github.com/satori/go.uuid"
-
-	"github.com/gosimple/slug"
 	log "github.com/sirupsen/logrus"
+	"github.com/zerok/pyvideosearch/slugify"
 )
 
 type Index struct {
@@ -243,7 +242,7 @@ func parseSession(p string) (*Session, error) {
 		return nil, errors.Wrapf(err, "Failed to parse session file %s", p)
 	}
 	if result.Slug == "" {
-		result.Slug = slug.Make(result.Title)
+		result.Slug = slugify.Slugify(result.Title)
 	}
 	return &result, nil
 }

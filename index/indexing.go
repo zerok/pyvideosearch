@@ -199,7 +199,9 @@ func parseCollection(ctx context.Context, p string) (*Collection, error) {
 		return nil, errors.Wrapf(err, "Failed to decode %s", categoryPath)
 	}
 
-	result.Slug = filepath.Base(p)
+	if result.Slug == "" {
+		result.Slug = slugify.Slugify(result.Title)
+	}
 
 	dir, err := os.Open(videosPath)
 	if err != nil {

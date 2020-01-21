@@ -40,7 +40,7 @@ type Speaker struct {
 type Collection struct {
 	Title    string `json:"title"`
 	Slug     string
-	Sessions []*Session
+	Sessions []Session
 }
 
 type IndexedSession struct {
@@ -59,7 +59,7 @@ func (s IndexedSession) Type() string {
 	return "session"
 }
 
-func newIndexedSession(session *Session, collection *Collection) IndexedSession {
+func newIndexedSession(session Session, collection Collection) IndexedSession {
 	speakers := make([]Speaker, 0, len(session.Speakers))
 	for _, speaker := range session.Speakers {
 		s := Speaker{

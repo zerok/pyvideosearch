@@ -89,6 +89,15 @@ func WatchForUpdates(ctx context.Context, idxChan chan *Index, indexPath string,
 	}
 }
 
+func readDir(path string) ([]os.FileInfo, error) {
+	fp, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer fp.Close()
+	return fp.Readdir(0)
+}
+
 func findIndex(root string) (string, error) {
 	fp, err := os.Open(root)
 	if err != nil {
@@ -97,6 +106,7 @@ func findIndex(root string) (string, error) {
 		}
 		return "", err
 	}
+	defer fp.Close()
 
 	files, err := fp.Readdir(0)
 	if err != nil {
@@ -186,37 +196,33 @@ func LoadIndex(ctx context.Context, indexPath string, dataFolder string, forceRe
 	}, err
 }
 
-func parseCollection(ctx context.Context, p string) (*Collection, error) {
+func parseCollection(ctx context.Context, p string) (Collection, error) {
 	result := Collection{}
 	categoryPath := filepath.Join(p, categoryFile)
 	videosPath := filepath.Join(p, videosFolder)
 	fp, err := os.Open(categoryPath)
 	if err != nil {
-		return nil, errors.Wrapf(err, "Failed to open category.json of %s", p)
+		return result, errors.Wrapf(err, "Failed to open category.json of %s", p)
 	}
-	defer fp.Close()
 	if err := json.NewDecoder(fp).Decode(&result); err != nil {
-		return nil, errors.Wrapf(err, "Failed to decode %s", categoryPath)
+		fp.Close()
+		return result, errors.Wrapf(err, "Failed to decode %s", categoryPath)
 	}
+	fp.Close()
 
 	if result.Slug == "" {
 		result.Slug = slugify.Slugify(result.Title)
 	}
 
-	dir, err := os.Open(videosPath)
+	videoFiles, err := readDir(videosPath)
 	if err != nil {
-		return nil, errors.Wrapf(err, "Failed to open videos folder %s", videosPath)
+		return result, errors.Wrapf(err, "Failed to read videos folder %s", videosPath)
 	}
-	defer dir.Close()
-	videoFiles, err := dir.Readdir(0)
-	if err != nil {
-		return nil, errors.Wrapf(err, "Failed to read videos folder %s", videosPath)
-	}
-	result.Sessions = make([]*Session, 0, len(videoFiles))
+	result.Sessions = make([]Session, 0, len(videoFiles))
 	for _, videoFile := range videoFiles {
 		select {
 		case <-ctx.Done():
-			return nil, errors.New("Canceled")
+			return result, errors.New("Canceled")
 		default:
 		}
 		videoPath := filepath.Join(videosPath, videoFile.Name())
@@ -225,127 +231,143 @@ func parseCollection(ctx context.Context, p string) (*Collection, error) {
 		}
 		session, err := parseSession(videoPath)
 		if err != nil {
-			return nil, errors.Wrapf(err, "Failed to parse sesion file %s", videoPath)
+			return result, errors.Wrapf(err, "Failed to parse session file %s", videoPath)
 		}
 		result.Sessions = append(result.Sessions, session)
 	}
 
-	return &result, nil
+	return result, nil
 }
 
-func parseSession(p string) (*Session, error) {
+func parseSession(p string) (Session, error) {
 	result := Session{}
 	fp, err := os.Open(p)
 	if err != nil {
-		return nil, errors.Wrapf(err, "Failed to open session file %s", p)
+		return result, errors.Wrapf(err, "Failed to open session file %s", p)
 	}
 	defer fp.Close()
 	if err := json.NewDecoder(fp).Decode(&result); err != nil {
-		return nil, errors.Wrapf(err, "Failed to parse session file %s", p)
+		return result, errors.Wrapf(err, "Failed to parse session file %s", p)
 	}
 	if result.Slug == "" {
 		result.Slug = slugify.Slugify(result.Title)
 	}
-	return &result, nil
+	return result, nil
 }
 
-func fillIndex(ctx context.Context, idx bleve.Index, dataFolder string) error {
-	root, err := os.Open(dataFolder)
-	if err != nil {
-		return errors.Wrapf(err, "Failed to open pyvideo data folder %s", dataFolder)
+func runCollectionParser(ctx context.Context, wait *sync.WaitGroup, errs chan error, parsedCollections chan Collection, work <-chan string) {
+	defer wait.Done()
+	defer log.Info("Parser done")
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case w, ok := <-work:
+			if !ok {
+				return
+			}
+			coll, err := parseCollection(ctx, w)
+			if err != nil {
+				errs <- err
+				return
+			}
+			parsedCollections <- coll
+		}
 	}
-	defer root.Close()
+}
 
-	categoryFolders, err := root.Readdir(0)
-	if err != nil {
-		return errors.Wrap(err, "Failed to read root category folders")
-	}
-
-	var folderWait sync.WaitGroup
-	var processingWait sync.WaitGroup
-	errs := make(chan error, len(categoryFolders))
-	folderWait.Add(len(categoryFolders))
-
-	parsedCollections := make(chan *Collection, len(categoryFolders))
-
-	subContext, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
+func runCollectionGenerator(ctx context.Context, wait *sync.WaitGroup, errs chan error, work chan string, categoryFolders []os.FileInfo, dataFolder string) {
+	defer close(work)
+	defer wait.Done()
+	defer log.Info("Generator done")
 	for _, folder := range categoryFolders {
 		select {
 		case <-ctx.Done():
-			return nil
+			return
 		default:
 		}
 		absPath := filepath.Join(dataFolder, folder.Name())
 		categoryPath := filepath.Join(absPath, categoryFile)
 		if strings.HasPrefix(folder.Name(), ".") {
-			folderWait.Done()
 			continue
 		}
 		if _, err := os.Stat(categoryPath); err != nil {
-			folderWait.Done()
 			continue
 		}
-		go func(p string) {
-			defer folderWait.Done()
-			select {
-			case <-subContext.Done():
-				return
-			default:
-			}
-			collection, err := parseCollection(subContext, p)
-			if err != nil {
-				cancel()
-				errs <- errors.Wrapf(err, "Failed to load the collection data in %s", p)
-				return
-			}
-			parsedCollections <- collection
-		}(absPath)
+		work <- absPath
 	}
+}
 
-	processingWait.Add(1)
-
-	go func() {
-		var indexers sync.WaitGroup
-		indexers.Add(5)
-		for i := 0; i < 5; i++ {
-			go func() {
-				defer indexers.Done()
-				for {
-					select {
-					case <-subContext.Done():
-						return
-					case collection, ok := <-parsedCollections:
-						if !ok {
-							return
-						}
-						log.Infof("Indexing %s", collection.Title)
-						batch := idx.NewBatch()
-						for _, session := range collection.Sessions {
-							id := fmt.Sprintf("session:%s:%s", collection.Slug, session.Slug)
-							batch.Index(id, newIndexedSession(session, collection))
-						}
-						idx.Batch(batch)
-					}
-				}
-			}()
+func runIndexer(ctx context.Context, wait *sync.WaitGroup, errs chan error, idx bleve.Index, parsedCollections chan Collection) {
+	defer wait.Done()
+	defer log.Info("Indexer done")
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case collection, ok := <-parsedCollections:
+			if !ok {
+				return
+			}
+			log.Infof("Indexing %s", collection.Title)
+			batch := idx.NewBatch()
+			for _, session := range collection.Sessions {
+				id := fmt.Sprintf("session:%s:%s", collection.Slug, session.Slug)
+				batch.Index(id, newIndexedSession(session, collection))
+			}
+			idx.Batch(batch)
 		}
-		indexers.Wait()
-		processingWait.Done()
-	}()
-
-	folderWait.Wait()
-	close(parsedCollections)
-	processingWait.Wait()
-
-	// Drain the errors channel to make sure that we are not ignoring an error.
-	select {
-	case err := <-errs:
-		return err
-	default:
 	}
-	return nil
+}
+
+func fillIndex(ctx context.Context, idx bleve.Index, dataFolder string) error {
+	categoryFolders, err := readDir(dataFolder)
+	if err != nil {
+		return errors.Wrap(err, "Failed to read root category folders")
+	}
+	cctx, cancel := context.WithCancel(ctx)
+	numParsers := 10
+	work := make(chan string)
+	parsedCollections := make(chan Collection, 10)
+	wg := sync.WaitGroup{}
+	errWg := sync.WaitGroup{}
+	errWg.Add(1)
+	errs := make(chan error)
+	wg.Add(1) // For the generator
+	wg.Add(1) // For the indexer
+	go func() {
+		defer errWg.Done()
+		defer log.Info("Error handler done")
+		select {
+		case <-cctx.Done():
+			return
+		case e := <-errs:
+			err = e
+			cancel()
+		}
+	}()
+	// Before anything else, we should start the go-routine that
+	// produces work for the collection parsers:
+	go runCollectionGenerator(cctx, &wg, errs, work, categoryFolders, dataFolder)
+
+	// First, let's start those routines that parse the category
+	// collections:
+	wgParsers := sync.WaitGroup{}
+	wgParsers.Add(numParsers)
+	for i := 0; i < numParsers; i++ {
+		go runCollectionParser(cctx, &wgParsers, errs, parsedCollections, work)
+	}
+
+	// Finally, let's start another go-routine that indexes the
+	// data:
+	go runIndexer(cctx, &wg, errs, idx, parsedCollections)
+	// Let's wait for all the parsers to be done before closing the collections channel
+	wgParsers.Wait()
+	close(parsedCollections)
+	wg.Wait()
+	cancel()
+	errWg.Wait()
+	return err
 }
 
 func updateRepo(p string) error {

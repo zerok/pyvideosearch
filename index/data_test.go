@@ -1,6 +1,7 @@
 package index
 
 import (
+	"context"
 	"testing"
 	"time"
 )
@@ -14,7 +15,7 @@ func TestNewIndexedSession(t *testing.T) {
 		Title: "My Session",
 		Slug:  "my-session",
 	}
-	res := newIndexedSession(ses, col)
+	res := newIndexedSession(context.Background(), ses, col)
 	if res.Title != ses.Title {
 		t.Error("Title wasn't copied over from the session")
 	}
@@ -55,7 +56,7 @@ func TestRecordedFormats(t *testing.T) {
 		session := &Session{
 			Recorded: testcase.Datetime,
 		}
-		result := newIndexedSession(session, col)
+		result := newIndexedSession(context.Background(), session, col)
 		if !result.Recorded.Equal(testcase.Expected) {
 			t.Errorf("%s: Expected: %s got %s", testcase.Message, testcase.Expected, result.Recorded)
 		}

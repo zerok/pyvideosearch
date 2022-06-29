@@ -10,7 +10,8 @@ import (
 	"os"
 
 	"github.com/Flaque/filet"
-	"github.com/blevesearch/bleve"
+	"github.com/blevesearch/bleve/v2"
+	"github.com/stretchr/testify/require"
 )
 
 var sessionContent = `{
@@ -53,18 +54,30 @@ func TestFillIndexBrokenCategoryJSON(t *testing.T) {
 }
 
 func TestParseSession(t *testing.T) {
-	defer filet.CleanUp(t)
-	_, confPath := createConference(t, "conf-2017", []string{"my-session"})
+	t.Run("full-test", func(t *testing.T) {
+		defer filet.CleanUp(t)
+		_, confPath := createConference(t, "conf-2017", []string{"my-session"})
 
-	s, err := parseSession(getVideoPath(confPath, "my-session"))
-	if err != nil {
-		t.Fatalf("Parsing session file returned an unexpected error: %s", err.Error())
-	}
+		s, err := parseSession(getVideoPath(confPath, "my-session"))
+		if err != nil {
+			t.Fatalf("Parsing session file returned an unexpected error: %s", err.Error())
+		}
 
-	// The session slug is derived from the title if not explicitly set:
-	if s.Slug != "some-title" {
-		t.Errorf("Unexpected value for slug: %v", s.Slug)
-	}
+		// The session slug is derived from the title if not explicitly set:
+		if s.Slug != "some-title" {
+			t.Errorf("Unexpected value for slug: %v", s.Slug)
+		}
+	})
+
+	// Regression-test for https://github.com/pyvideo/pyvideo/issues/293
+	t.Run("trim-spaces-in-title", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		videoPath := filepath.Join(tmpDir, "video.json")
+		ioutil.WriteFile(videoPath, []byte(`{"title": " hello"}`), 0600)
+		s, err := parseSession(videoPath)
+		require.NoError(t, err)
+		require.Equal(t, "hello", s.Slug)
+	})
 }
 
 func createConference(t *testing.T, slug string, sessions []string) (string, string) {

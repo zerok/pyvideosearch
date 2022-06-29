@@ -1,10 +1,11 @@
 package index
 
 import (
+	"context"
 	"fmt"
 	"time"
 
-	log "github.com/sirupsen/logrus"
+	"github.com/rs/zerolog"
 	"github.com/zerok/pyvideosearch/slugify"
 )
 
@@ -59,7 +60,8 @@ func (s IndexedSession) Type() string {
 	return "session"
 }
 
-func newIndexedSession(session Session, collection Collection) IndexedSession {
+func newIndexedSession(ctx context.Context, session *Session, collection *Collection) IndexedSession {
+	logger := zerolog.Ctx(ctx)
 	speakers := make([]Speaker, 0, len(session.Speakers))
 	for _, speaker := range session.Speakers {
 		s := Speaker{
@@ -90,7 +92,7 @@ func newIndexedSession(session Session, collection Collection) IndexedSession {
 			}
 		}
 		if !valid {
-			log.Infof("Failed to parse %s", session.Recorded)
+			logger.Warn().Msgf("Failed to parse %s", session.Recorded)
 		}
 		res.RecordedFormatted = res.Recorded.Format(outputTimestampFormat)
 	}

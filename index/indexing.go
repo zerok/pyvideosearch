@@ -11,10 +11,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/blevesearch/bleve"
+	"github.com/blevesearch/bleve/v2"
 	"github.com/pkg/errors"
+	"github.com/rs/zerolog"
 	uuid "github.com/satori/go.uuid"
-	log "github.com/sirupsen/logrus"
 	"github.com/zerok/pyvideosearch/slugify"
 )
 
@@ -39,6 +39,7 @@ const videosFolder = "videos"
 const stateFile = ".state"
 
 func WatchForUpdates(ctx context.Context, idxChan chan *Index, indexPath string, dataPath string, interval time.Duration, deleteOldIndex bool) error {
+	logger := zerolog.Ctx(ctx)
 	for {
 		select {
 		case <-ctx.Done():
@@ -46,23 +47,23 @@ func WatchForUpdates(ctx context.Context, idxChan chan *Index, indexPath string,
 		default:
 		}
 
-		log.Info("Checking upstream for new commits")
+		logger.Info().Msg("Checking upstream for new commits")
 
-		if err := updateRepo(dataPath); err != nil {
+		if err := updateRepo(ctx, dataPath); err != nil {
 			return errors.Wrapf(err, "Failed to update git repository at %s", dataPath)
 		}
 
-		ref, err := getRepoState(dataPath)
+		ref, err := getRepoState(ctx, dataPath)
 		if err != nil {
 			return errors.Wrapf(err, "Failed to get data repo state of %s", dataPath)
 		}
 
-		idxRef, err := getIndexState(indexPath)
+		idxRef, err := getIndexState(ctx, indexPath)
 		if err != nil {
 			return errors.Wrapf(err, "Failed to get index state of %s", indexPath)
 		}
 
-		log.WithField("index", idxRef.Ref).WithField("repo", ref).Info("Comparing states")
+		logger.Info().Str("index", idxRef.Ref).Str("repo", ref).Msg("Comparing states")
 
 		oldIdx, err := findIndex(indexPath)
 		if err != nil {
@@ -70,13 +71,13 @@ func WatchForUpdates(ctx context.Context, idxChan chan *Index, indexPath string,
 		}
 
 		if idxRef.Ref != ref {
-			log.Info("New commits found. Will rebuild index")
+			logger.Info().Msg("New commits found. Will rebuild index")
 			newIdxName := newIndexName(indexPath)
 			idx, err := createNewIndex(ctx, filepath.Join(indexPath, newIdxName), dataPath)
 			if err != nil {
 				return errors.Wrap(err, "Failed to load the new index")
 			}
-			if err := setIndexState(indexPath, &State{Index: newIdxName, Ref: ref}); err != nil {
+			if err := setIndexState(ctx, indexPath, &State{Index: newIdxName, Ref: ref}); err != nil {
 				return err
 			}
 			if oldIdx != "" && deleteOldIndex {
@@ -148,8 +149,9 @@ func createNewIndex(ctx context.Context, indexPath string, dataPath string) (*In
 // on the data folder. If the index already exists then you can enforce a
 // rebuild using the forceRebuild parameter.
 func LoadIndex(ctx context.Context, indexPath string, dataFolder string, forceRebuild bool, deleteOld bool) (*Index, error) {
-	log.Info("Loading index")
-	defer log.Info("Load complete")
+	logger := zerolog.Ctx(ctx)
+	logger.Info().Msg("Loading index")
+	defer logger.Info().Msg("Load complete")
 	var create bool
 
 	idxPath, err := findIndex(indexPath)
@@ -158,7 +160,7 @@ func LoadIndex(ctx context.Context, indexPath string, dataFolder string, forceRe
 	}
 	if idxPath == "" {
 		create = true
-		log.Infof("%s doesn't exist yet. Creating a new index.", indexPath)
+		logger.Info().Msgf("%s doesn't exist yet. Creating a new index.", indexPath)
 	}
 
 	if forceRebuild || create {
@@ -176,16 +178,16 @@ func LoadIndex(ctx context.Context, indexPath string, dataFolder string, forceRe
 		if err != nil {
 			return nil, errors.Wrapf(err, "Failed to create new index in %s", indexPath)
 		}
-		ref, err := getRepoState(dataFolder)
+		ref, err := getRepoState(ctx, dataFolder)
 		if err != nil {
 			return nil, err
 		}
-		if err := setIndexState(indexPath, &State{Index: idxName, Ref: ref}); err != nil {
+		if err := setIndexState(ctx, indexPath, &State{Index: idxName, Ref: ref}); err != nil {
 			return nil, err
 		}
 		return idx, err
 	}
-	log.Infof("%s already exists. Loading index from there.", idxPath)
+	logger.Info().Msgf("%s already exists. Loading index from there.", idxPath)
 	idx, err := bleve.Open(idxPath)
 	if err != nil {
 		return nil, err
@@ -250,14 +252,15 @@ func parseSession(p string) (Session, error) {
 		return result, errors.Wrapf(err, "Failed to parse session file %s", p)
 	}
 	if result.Slug == "" {
-		result.Slug = slugify.Slugify(result.Title)
+		result.Slug = slugify.Slugify(strings.TrimSpace(result.Title))
 	}
 	return result, nil
 }
 
 func runCollectionParser(ctx context.Context, wait *sync.WaitGroup, errs chan error, parsedCollections chan Collection, work <-chan string) {
+	logger := zerolog.Ctx(ctx)
 	defer wait.Done()
-	defer log.Info("Parser done")
+	defer logger.Info().Msg("Parser done")
 	for {
 		select {
 		case <-ctx.Done():
@@ -277,9 +280,10 @@ func runCollectionParser(ctx context.Context, wait *sync.WaitGroup, errs chan er
 }
 
 func runCollectionGenerator(ctx context.Context, wait *sync.WaitGroup, errs chan error, work chan string, categoryFolders []os.FileInfo, dataFolder string) {
+	logger := zerolog.Ctx(ctx)
 	defer close(work)
 	defer wait.Done()
-	defer log.Info("Generator done")
+	defer logger.Info().Msg("Generator done")
 	for _, folder := range categoryFolders {
 		select {
 		case <-ctx.Done():
@@ -299,8 +303,9 @@ func runCollectionGenerator(ctx context.Context, wait *sync.WaitGroup, errs chan
 }
 
 func runIndexer(ctx context.Context, wait *sync.WaitGroup, errs chan error, idx bleve.Index, parsedCollections chan Collection) {
+	logger := zerolog.Ctx(ctx)
 	defer wait.Done()
-	defer log.Info("Indexer done")
+	defer logger.Info().Msg("Indexer done")
 	for {
 		select {
 		case <-ctx.Done():
@@ -309,11 +314,11 @@ func runIndexer(ctx context.Context, wait *sync.WaitGroup, errs chan error, idx 
 			if !ok {
 				return
 			}
-			log.Infof("Indexing %s", collection.Title)
+			logger.Info().Msgf("Indexing %s", collection.Title)
 			batch := idx.NewBatch()
 			for _, session := range collection.Sessions {
 				id := fmt.Sprintf("session:%s:%s", collection.Slug, session.Slug)
-				batch.Index(id, newIndexedSession(session, collection))
+				batch.Index(id, newIndexedSession(ctx, &session, &collection))
 			}
 			idx.Batch(batch)
 		}
@@ -321,6 +326,7 @@ func runIndexer(ctx context.Context, wait *sync.WaitGroup, errs chan error, idx 
 }
 
 func fillIndex(ctx context.Context, idx bleve.Index, dataFolder string) error {
+	logger := zerolog.Ctx(ctx)
 	categoryFolders, err := readDir(dataFolder)
 	if err != nil {
 		return errors.Wrap(err, "Failed to read root category folders")
@@ -337,7 +343,7 @@ func fillIndex(ctx context.Context, idx bleve.Index, dataFolder string) error {
 	wg.Add(1) // For the indexer
 	go func() {
 		defer errWg.Done()
-		defer log.Info("Error handler done")
+		defer logger.Info().Msg("Error handler done")
 		select {
 		case <-cctx.Done():
 			return
@@ -370,17 +376,18 @@ func fillIndex(ctx context.Context, idx bleve.Index, dataFolder string) error {
 	return err
 }
 
-func updateRepo(p string) error {
-	cmd := exec.Command("git", "pull", "origin", "master")
+func updateRepo(ctx context.Context, p string) error {
+	cmd := exec.CommandContext(ctx, "git", "pull", "origin", "master")
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	cmd.Dir = p
 	return cmd.Run()
 }
 
-func getRepoState(p string) (string, error) {
-	log.Infof("Checking HEAD of %s", p)
-	cmd := exec.Command("git", "rev-parse", "HEAD")
+func getRepoState(ctx context.Context, p string) (string, error) {
+	logger := zerolog.Ctx(ctx)
+	logger.Info().Msgf("Checking HEAD of %s", p)
+	cmd := exec.CommandContext(ctx, "git", "rev-parse", "HEAD")
 	cmd.Dir = p
 	data, err := cmd.CombinedOutput()
 	if err != nil {
@@ -389,7 +396,7 @@ func getRepoState(p string) (string, error) {
 	return strings.TrimSpace(string(data)), err
 }
 
-func getIndexState(p string) (*State, error) {
+func getIndexState(ctx context.Context, p string) (*State, error) {
 	sp := filepath.Join(p, stateFile)
 	state := State{}
 	fp, err := os.Open(sp)
@@ -403,7 +410,7 @@ func getIndexState(p string) (*State, error) {
 	return &state, nil
 }
 
-func setIndexState(p string, state *State) error {
+func setIndexState(ctx context.Context, p string, state *State) error {
 	sp := filepath.Join(p, stateFile)
 	fp, err := os.OpenFile(sp, os.O_TRUNC|os.O_CREATE|os.O_RDWR, 0600)
 	if err != nil {

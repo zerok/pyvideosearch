@@ -5,7 +5,7 @@ import (
 	"net/http"
 
 	"github.com/rs/cors"
-	log "github.com/sirupsen/logrus"
+	"github.com/rs/zerolog"
 
 	"encoding/json"
 
@@ -13,7 +13,7 @@ import (
 
 	"sync"
 
-	"github.com/blevesearch/bleve"
+	"github.com/blevesearch/bleve/v2"
 	"github.com/julienschmidt/httprouter"
 	"github.com/zerok/pyvideosearch/index"
 )
@@ -24,6 +24,7 @@ var searchQueries = expvar.NewInt("pyvideo.search_count")
 // If you need to support XHRs, make sure to pass respective allowedOrigin
 // hosts like http://domain.com:5000.
 func RunHTTPD(ctx context.Context, idxChan chan *index.Index, addr string, allowedOrigins []string) error {
+	logger := zerolog.Ctx(ctx)
 	router := httprouter.New()
 
 	idxLock := sync.RWMutex{}
@@ -43,7 +44,7 @@ func RunHTTPD(ctx context.Context, idxChan chan *index.Index, addr string, allow
 				idx.Destroy()
 				idx = i
 				idxLock.Unlock()
-				log.Info("Index updated for HTTPD")
+				logger.Info().Msg("Index updated for HTTPD")
 			}
 		}
 	}()
@@ -78,6 +79,6 @@ func RunHTTPD(ctx context.Context, idxChan chan *index.Index, addr string, allow
 		AllowCredentials: true,
 	})
 
-	log.Printf("Starting server on %s (allowing XHR from %s)", addr, allowedOrigins)
+	logger.Info().Msgf("Starting server on %s (allowing XHR from %s)", addr, allowedOrigins)
 	return http.ListenAndServe(addr, c.Handler(router))
 }

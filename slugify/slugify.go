@@ -30,7 +30,9 @@ func toNormalizedLowercase(input string) string {
 }
 
 func replaceSpecialCharacters(input string) string {
-	output := regexp.MustCompile("[^\\w\\s-]").ReplaceAllString(input, "")
+	output := input
+	output = strings.ReplaceAll(output, "©", "c")
+	output = regexp.MustCompile("[^\\w\\s-]").ReplaceAllString(output, "")
 	output = regexp.MustCompile("[-\\s]+").ReplaceAllString(output, "-")
 	return output
 }

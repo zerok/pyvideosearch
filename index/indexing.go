@@ -377,7 +377,7 @@ func fillIndex(ctx context.Context, idx bleve.Index, dataFolder string) error {
 }
 
 func updateRepo(ctx context.Context, p string) error {
-	cmd := exec.CommandContext(ctx, "git", "pull", "origin", "master")
+	cmd := exec.CommandContext(ctx, "git", "pull", "origin", "main")
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	cmd.Dir = p

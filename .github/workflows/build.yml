@@ -40,4 +40,4 @@ jobs:
         uses: docker/build-push-action@1a162644f9a7e87d8f4b053101d1d9a712edc18c # 6.3.0
         with:
           push: false
-          tags: zerok/pyvideosearch:latest
+          tags: ghcr.io/zerok/pyvideosearch:latest

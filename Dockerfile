@@ -4,7 +4,7 @@ WORKDIR /src
 RUN go build -o pyvideosearch ./cmd/pyvideosearch
 
 FROM alpine:3.20
-LABEL MAINTAINER Horst Gutmann <zerok@zerokspot.com>
+LABEL MAINTAINER="Horst Gutmann <zerok@zerokspot.com>"
 RUN apk add --no-cache git
 COPY --from=builder  /src/pyvideosearch /usr/bin/
 VOLUME ["/var/lib/pyvideosearch"]

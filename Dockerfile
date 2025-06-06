@@ -3,7 +3,7 @@ ADD . /src
 WORKDIR /src
 RUN go build -o pyvideosearch ./cmd/pyvideosearch
 
-FROM alpine:3.21
+FROM alpine:3.22
 LABEL MAINTAINER="Horst Gutmann <zerok@zerokspot.com>"
 RUN apk add --no-cache git
 COPY --from=builder  /src/pyvideosearch /usr/bin/

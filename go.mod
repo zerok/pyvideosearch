@@ -13,7 +13,7 @@ require (
 	github.com/rs/cors v1.11.1
 	github.com/rs/zerolog v1.34.0
 	github.com/satori/go.uuid v1.2.0
-	github.com/spf13/pflag v1.0.7
+	github.com/spf13/pflag v1.0.8
 	github.com/stretchr/testify v1.11.1
 	golang.org/x/text v0.28.0
 )

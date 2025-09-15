@@ -1,6 +1,6 @@
 module github.com/zerok/pyvideosearch
 
-go 1.23.0
+go 1.24.0
 
 toolchain go1.24.1
 
@@ -15,7 +15,7 @@ require (
 	github.com/satori/go.uuid v1.2.0
 	github.com/spf13/pflag v1.0.10
 	github.com/stretchr/testify v1.11.1
-	golang.org/x/text v0.28.0
+	golang.org/x/text v0.29.0
 )
 
 require (

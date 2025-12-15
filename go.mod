@@ -6,7 +6,7 @@ toolchain go1.24.1
 
 require (
 	github.com/Flaque/filet v0.0.0-20170210164719-70fb4a62b734
-	github.com/blevesearch/bleve/v2 v2.5.5
+	github.com/blevesearch/bleve/v2 v2.5.6
 	github.com/julienschmidt/httprouter v1.3.0
 	github.com/mozillazg/go-unidecode v0.2.0
 	github.com/pkg/errors v0.9.1

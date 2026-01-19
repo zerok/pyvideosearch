@@ -1,4 +1,4 @@
-FROM golang:1.25.5-alpine AS builder
+FROM golang:1.26rc2-alpine AS builder
 ADD . /src
 WORKDIR /src
 RUN go build -o pyvideosearch ./cmd/pyvideosearch

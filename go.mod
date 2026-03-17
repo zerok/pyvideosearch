@@ -1,8 +1,6 @@
 module github.com/zerok/pyvideosearch
 
-go 1.24.0
-
-toolchain go1.24.1
+go 1.26.1
 
 require (
 	github.com/Flaque/filet v0.0.0-20170210164719-70fb4a62b734

@@ -9,7 +9,7 @@ require (
 	github.com/mozillazg/go-unidecode v0.2.0
 	github.com/pkg/errors v0.9.1
 	github.com/rs/cors v1.11.1
-	github.com/rs/zerolog v1.34.0
+	github.com/rs/zerolog v1.35.0
 	github.com/satori/go.uuid v1.2.0
 	github.com/spf13/pflag v1.0.10
 	github.com/stretchr/testify v1.11.1
@@ -39,8 +39,8 @@ require (
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/golang/snappy v0.0.4 // indirect
 	github.com/json-iterator/go v0.0.0-20171115153421-f7279a603ede // indirect
-	github.com/mattn/go-colorable v0.1.13 // indirect
-	github.com/mattn/go-isatty v0.0.19 // indirect
+	github.com/mattn/go-colorable v0.1.14 // indirect
+	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/mschoch/smat v0.2.0 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/spf13/afero v1.1.2 // indirect
